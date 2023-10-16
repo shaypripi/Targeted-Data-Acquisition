@@ -49,9 +49,9 @@ WIKIDATA_QUERY_SEARCH_TEMPLATE = """
 
 WIKIDATA_PROPERTY_EXTRACTIONS_TEMPLATE = """
     SELECT ?proprty
-    WHERE {
+    WHERE {{
     wd:{Q_code} wdt:{prop} ?proprty.
-    }
+    }}
     """
 
 WIKIDATA_NAME_EXTRACTIONS_TEMPLATE = """
@@ -78,11 +78,12 @@ BASIC_SEARCHES_DICT = {
 }
 
 
-"""
-Returns the Q type for a the most common types of items
-"""
+
 
 def get_Q_type_basic(label: str) -> str:
+    """
+    Returns the Q type for a the most common types of items
+    """
     if label in COMMON_Q_TYPES: 
         return COMMON_Q_TYPES[label.lower()]
     return ""
@@ -142,11 +143,27 @@ def extract_properties_by_popularity(Q_code: str) -> list[str]:
 
     return sorted(properties, key=ref_sort, reverse=True)
 
-def extract_n_item_properties(Q_code: str, most_referenced_props: list[str], n: int):
-    #runs a query with the n most referenced properties
-    query = WIKIDATA_PROPERTY_EXTRACTIONS_TEMPLATE.format(props=" ".join(most_referenced_props[:n]), q_code=Q_code)
-    results = wbi_helpers.execute_sparql_query(query)
-    return results["results"]["bindings"]
+def extract_n_item_properties(node: Node, most_referenced_props: list[str], n: int) -> None:
+    """
+    Extracts the values of the n most referenced properties for a given Wikidata item,
+    and adds them as children of the given node.
+
+    Args:
+        node (Node): The node representing the Wikidata item to extract properties from.
+        most_referenced_props (list[str]): A list of property IDs (PIDs) representing the most referenced properties for the given Wikidata item.
+        n (int): The maximum number of properties to extract. If n is greater than the length of most_referenced_props, only the latter will be extracted.
+
+    Returns:
+        None.
+    """
+    n = min(n, len(most_referenced_props))
+    for prop in most_referenced_props[:n]:
+        query = WIKIDATA_PROPERTY_EXTRACTIONS_TEMPLATE.format(Q_code=node.get_code(), prop=prop)
+        prop_name = extract_property_label(prop)
+        results = wbi_helpers.execute_sparql_query(query)
+        for item in results["results"]["bindings"]:
+            node.add_child(Node(prop_name, prop, value=item["proprty"]["value"], parent=node))
+
 
 
 def extract_property_label(P_code: str):
@@ -173,13 +190,8 @@ if __name__ == "__main__":
             print(f"Could not find {item} of type {type}")
         else:
             print(f"{item} is of type {type} and has Q code {q_code}")
-            # node = Node(item, q_code)
-            # best_props = extract_properties_by_popularity(q_code)
-            # for i in range(5):
-            #     prop = best_props[i]
-            #     prop_label = extract_property_label(prop)
-
-            # prop_dict = {item: extract_property_label(item) for item in best_props[:5]}
-            # print(prop_dict)
-
-    
+            node = Node(item, q_code)
+            best_props = extract_properties_by_popularity(q_code)
+            extract_n_item_properties(node, best_props, 8)
+            print(node.get_details())
+            
